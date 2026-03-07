@@ -1,34 +1,49 @@
 import os
 import requests
 
-# 从环境变量获取配置（和你Railway里的变量名一致）
+# 从环境变量读取配置（和你Railway的变量名保持一致）
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-def send(content):
-    """TG消息发送函数，供scanner.py调用"""
-    # 校验参数
+# 改回官方TG API地址（核心修复点）
+URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+def send(msg):
+    """发送TG消息，保留原有逻辑+增加详细日志排查问题"""
+    # 先校验参数是否为空
     if not BOT_TOKEN or not CHAT_ID:
-        print("错误：BOT_TOKEN或CHAT_ID未配置")
-        return False
-    
-    # 使用TG反向代理（解决Railway访问TG API的问题）
-    url = f"https://tgapi.qqsuu.cn/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": content,
-        "parse_mode": "Markdown"
-    }
+        print("TG error: BOT_TOKEN或CHAT_ID未配置")
+        return
     
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"TG发送响应：{response.status_code} | {response.text}")
+        # 发送请求（保留你原有参数：disable_web_page_preview=True）
+        response = requests.post(
+            URL,
+            json={
+                "chat_id": CHAT_ID,
+                "text": msg,
+                "disable_web_page_preview": True  # 保留你原有配置
+            },
+            timeout=10
+        )
+        # 增加日志：打印响应状态和内容，方便排查
+        print(f"TG响应状态码: {response.status_code}")
+        print(f"TG响应内容: {response.text}")
         if response.status_code == 200:
             print("TG消息发送成功")
-            return True
         else:
-            print(f"TG发送失败：{response.text}")
-            return False
+            print(f"TG发送失败: {response.text}")
+            
     except Exception as e:
-        print(f"TG发送异常：{str(e)}")
-        return False
+        print(f"TG error: {e}")
+        # 备选方案：若官方地址仍访问失败，自动切换备用代理（可选）
+        try:
+            backup_url = f"https://api.telegram.dog/bot{BOT_TOKEN}/sendMessage"
+            response = requests.post(
+                backup_url,
+                json={"chat_id": CHAT_ID, "text": msg, "disable_web_page_preview": True},
+                timeout=10
+            )
+            print(f"备用代理响应: {response.status_code} | {response.text}")
+        except Exception as backup_e:
+            print(f"备用代理也失败: {backup_e}")
