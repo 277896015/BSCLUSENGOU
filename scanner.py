@@ -1,7 +1,7 @@
 import time
 from web3 import Web3
 from utils import get_token_name, get_bnb_balance
-from tg import send
+from tg import send  # 已有TG发送函数，直接用
 
 CREATOR = Web3.to_checksum_address("0x8480d0795615b535fb17392c24b42ea283b6f863")
 
@@ -100,6 +100,14 @@ https://bscscan.com/token/{token}
         )
 
         print("监听创币器...")
+        # ========== 新增：启动监听时发送TG提醒 ==========
+        start_msg = """
+🔍 创币器监听已启动！
+✅ 正在监听BSC创币器合约：0x8480d0795615b535fb17392c24b42ea283b6f863
+🕒 每3秒检查一次新代币创建事件
+📢 发现新币将第一时间推送提醒！
+        """
+        send(start_msg)  # 调用tg.py的send函数发送启动提醒
 
         while True:
 
@@ -119,6 +127,9 @@ https://bscscan.com/token/{token}
             except Exception as e:
 
                 print("监听错误:", e)
+                # 可选：监听出错也发送TG提醒
+                error_msg = f"⚠️ 创币器监听出错：{str(e)}\n将在5秒后重试..."
+                send(error_msg)
                 time.sleep(5)
 
             time.sleep(3)
