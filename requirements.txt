@@ -1,2 +1,7 @@
+# 核心依赖
 web3==6.12.0
-requests
+requests==2.31.0
+# 修复 pkg_resources 缺失
+setuptools>=65.5.0
+# 可选：web3 6.12.0 兼容的额外依赖（避免隐性报错）
+pkg_resources==0.0.0
