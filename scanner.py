@@ -96,7 +96,7 @@ https://bscscan.com/token/{token}
     def run(self):
 
         event_filter = self.contract.events.TokenCreated.create_filter(
-            fromBlock="latest"
+            from_block="latest"
         )
 
         print("监听创币器...")
