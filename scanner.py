@@ -1,4 +1,6 @@
+import requests
 import time
+import os
 from web3 import Web3
 from utils import get_token_name, get_bnb_balance
 from tg import send
@@ -6,7 +8,7 @@ from tg import send
 CREATOR = Web3.to_checksum_address(
     "0x8480d0795615b535fb17392c24b42ea283b6f863"
 )
-
+BSCSCAN_KEY = os.getenv("BSCSCAN_KEY")
 CREATOR_ABI = [
 {
 "anonymous": False,
@@ -38,39 +40,43 @@ class Scanner:
 
         self.seen = set()
 
-    # 改成 logs 查询（非常快）
     def get_first_funder(self, dev):
 
-        try:
+      try:
 
-            latest = self.w3.eth.block_number
-            start = latest - 50000
+          url = "https://api.bscscan.com/api"
 
-            logs = self.w3.eth.get_logs({
-                "fromBlock": start,
-                "toBlock": latest,
-                "topics": [
-                    TRANSFER_TOPIC,
-                    None,
-                    Web3.to_hex(
-                        Web3.to_bytes(
-                            hexstr=dev
-                        ).rjust(32, b'\0')
-                    )
-                ]
-            })
+          params = {
+                 "module": "account",
+                 "action": "txlist",
+                 "address": dev,
+                 "startblock": 0,
+                 "endblock": 99999999,
+                 "sort": "asc",
+                 "offset": 10,
+                 "apikey": BSCSCAN_KEY
+           }
 
-            if logs:
+          r = requests.get(url, params=params, timeout=10).json()
 
-                tx = self.w3.eth.get_transaction(
-                    logs[0]["transactionHash"]
-                )
+          txs = r.get("result", [])
 
+          if not txs:
+            return "unknown"
+
+        # 找第一笔转入 dev 的交易
+        for tx in txs:
+
+            to_addr = tx.get("to")
+
+            if to_addr and to_addr.lower() == dev.lower():
                 return tx["from"]
 
-        except Exception as e:
+        return txs[0]["from"]
 
-            print("查funder失败:", e)
+    except Exception as e:
+
+        print("查funder失败:", e)
 
         return "unknown"
 
