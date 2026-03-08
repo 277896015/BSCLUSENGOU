@@ -8,7 +8,9 @@ from tg import send
 CREATOR = Web3.to_checksum_address(
     "0x8480d0795615b535fb17392c24b42ea283b6f863"
 )
+
 BSCSCAN_KEY = os.getenv("BSCSCAN_KEY")
+
 CREATOR_ABI = [
 {
 "anonymous": False,
@@ -27,6 +29,7 @@ TRANSFER_TOPIC = Web3.keccak(
     text="Transfer(address,address,uint256)"
 ).hex()
 
+
 class Scanner:
 
     def __init__(self, w3):
@@ -42,43 +45,43 @@ class Scanner:
 
     def get_first_funder(self, dev):
 
-      try:
+        try:
 
-          url = "https://api.bscscan.com/api"
+            url = "https://api.bscscan.com/api"
 
-          params = {
-                 "module": "account",
-                 "action": "txlist",
-                 "address": dev,
-                 "startblock": 0,
-                 "endblock": 99999999,
-                 "sort": "asc",
-                 "offset": 10,
-                 "apikey": BSCSCAN_KEY
-           }
+            params = {
+                "module": "account",
+                "action": "txlist",
+                "address": dev,
+                "startblock": 0,
+                "endblock": 99999999,
+                "sort": "asc",
+                "offset": 5,
+                "apikey": BSCSCAN_KEY
+            }
 
-          r = requests.get(url, params=params, timeout=10).json()
+            r = requests.get(url, params=params, timeout=10).json()
 
-          txs = r.get("result", [])
+            txs = r.get("result", [])
 
-          if not txs:
+            if not txs:
+                return "unknown"
+
+            # 找第一笔转入 dev 的交易
+            for tx in txs:
+
+                to_addr = tx.get("to")
+
+                if to_addr and to_addr.lower() == dev.lower():
+                    return tx["from"]
+
+            return txs[0]["from"]
+
+        except Exception as e:
+
+            print("查funder失败:", e)
+
             return "unknown"
-
-        # 找第一笔转入 dev 的交易
-        for tx in txs:
-
-            to_addr = tx.get("to")
-
-            if to_addr and to_addr.lower() == dev.lower():
-                return tx["from"]
-
-        return txs[0]["from"]
-
-    except Exception as e:
-
-        print("查funder失败:", e)
-
-        return "unknown"
 
     def process(self, dev, token):
 
@@ -90,16 +93,12 @@ class Scanner:
         print("处理token:", token)
 
         try:
-
             name = get_token_name(self.w3, token)
-
         except:
             name = "unknown"
 
         try:
-
             bnb = get_bnb_balance(self.w3, dev)
-
         except:
             bnb = 0
 
