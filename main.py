@@ -2,15 +2,15 @@ import os
 from web3 import Web3
 from scanner import Scanner
 
-RPC_URL = os.getenv("RPC_URL")
+RPC = os.getenv("RPC")
 
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
+if not RPC:
+    print("❌ 未设置环境变量 RPC")
+    exit(1)
 
-if not w3.is_connected():
-    print("RPC连接失败")
-    exit()
+w3 = Web3(Web3.HTTPProvider(RPC))
+print("✅ RPC连接成功" if w3.is_connected() else "❌ RPC连接失败")
 
-print("RPC连接成功")
-
-scanner = Scanner(w3)
-scanner.run()
+if __name__ == "__main__":
+    scanner = Scanner()
+    scanner.scan()
