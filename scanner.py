@@ -1,9 +1,11 @@
 import time
 from web3 import Web3
 from utils import get_token_name, get_bnb_balance
-from tg import send  # 已有TG发送函数，直接用
+from tg import send
 
-CREATOR = Web3.to_checksum_address("0x8480d0795615b535fb17392c24b42ea283b6f863")
+CREATOR = Web3.to_checksum_address(
+    "0x8480d0795615b535fb17392c24b42ea283b6f863"
+)
 
 CREATOR_ABI = [
 {
@@ -19,6 +21,10 @@ CREATOR_ABI = [
 }
 ]
 
+TRANSFER_TOPIC = Web3.keccak(
+    text="Transfer(address,address,uint256)"
+).hex()
+
 class Scanner:
 
     def __init__(self, w3):
@@ -32,30 +38,39 @@ class Scanner:
 
         self.seen = set()
 
-    def get_first_funder(self, address):
+    # 改成 logs 查询（非常快）
+    def get_first_funder(self, dev):
 
-        latest = self.w3.eth.block_number
-        start = latest - 200000
+        try:
 
-        if start < 1:
-            start = 1
+            latest = self.w3.eth.block_number
+            start = latest - 50000
 
-        for block in range(start, latest):
+            logs = self.w3.eth.get_logs({
+                "fromBlock": start,
+                "toBlock": latest,
+                "topics": [
+                    TRANSFER_TOPIC,
+                    None,
+                    Web3.to_hex(
+                        Web3.to_bytes(
+                            hexstr=dev
+                        ).rjust(32, b'\0')
+                    )
+                ]
+            })
 
-            try:
+            if logs:
 
-                b = self.w3.eth.get_block(
-                    block,
-                    full_transactions=True
+                tx = self.w3.eth.get_transaction(
+                    logs[0]["transactionHash"]
                 )
 
-                for tx in b.transactions:
+                return tx["from"]
 
-                    if tx["to"] and tx["to"].lower() == address.lower():
-                        return tx["from"]
+        except Exception as e:
 
-            except:
-                pass
+            print("查funder失败:", e)
 
         return "unknown"
 
@@ -66,8 +81,22 @@ class Scanner:
 
         self.seen.add(token)
 
-        name = get_token_name(self.w3, token)
-        bnb = get_bnb_balance(self.w3, dev)
+        print("处理token:", token)
+
+        try:
+
+            name = get_token_name(self.w3, token)
+
+        except:
+            name = "unknown"
+
+        try:
+
+            bnb = get_bnb_balance(self.w3, dev)
+
+        except:
+            bnb = 0
+
         funder = self.get_first_funder(dev)
 
         msg = f"""
@@ -91,6 +120,8 @@ Dev BNB
 https://bscscan.com/token/{token}
 """
 
+        print("发送TG")
+
         send(msg)
 
     def run(self):
@@ -100,14 +131,8 @@ https://bscscan.com/token/{token}
         )
 
         print("监听创币器...")
-        # ========== 新增：启动监听时发送TG提醒 ==========
-        start_msg = """
-🔍 创币器监听已启动！
-✅ 正在监听BSC创币器合约：0x8480d0795615b535fb17392c24b42ea283b6f863
-🕒 每3秒检查一次新代币创建事件
-📢 发现新币将第一时间推送提醒！
-        """
-        send(start_msg)  # 调用tg.py的send函数发送启动提醒
+
+        send("🔍 创币器监听已启动")
 
         while True:
 
@@ -127,9 +152,9 @@ https://bscscan.com/token/{token}
             except Exception as e:
 
                 print("监听错误:", e)
-                # 可选：监听出错也发送TG提醒
-                error_msg = f"⚠️ 创币器监听出错：{str(e)}\n将在5秒后重试..."
-                send(error_msg)
+
+                send(f"⚠️ 监听错误\n{e}")
+
                 time.sleep(5)
 
             time.sleep(3)
