@@ -1,165 +1,219 @@
-import requests
-import time
 import os
+import time
+import requests
 from web3 import Web3
+
 from utils import get_token_name, get_bnb_balance
 from tg import send
+from cex import CEX
+
+RPC = os.getenv("RPC")
+BSCSCAN_KEY = os.getenv("BSCSCAN_KEY")
+
+ETHERSCAN = "https://api.etherscan.io/v2/api"
+CHAIN_ID = 56
 
 CREATOR = Web3.to_checksum_address(
     "0x8480d0795615b535fb17392c24b42ea283b6f863"
 )
 
-BSCSCAN_KEY = os.getenv("BSCSCAN_KEY")
-
-CREATOR_ABI = [
-{
-"anonymous": False,
-"inputs": [
-{"indexed": True, "name": "owner", "type": "address"},
-{"indexed": True, "name": "token", "type": "address"},
-{"indexed": False, "name": "tokenType", "type": "uint8"},
-{"indexed": False, "name": "version", "type": "uint256"}
-],
-"name": "TokenCreated",
-"type": "event"
-}
-]
-
-TRANSFER_TOPIC = Web3.keccak(
-    text="Transfer(address,address,uint256)"
-).hex()
+w3 = Web3(Web3.HTTPProvider(RPC))
 
 
 class Scanner:
 
-    def __init__(self, w3):
+    def __init__(self):
 
-        self.w3 = w3
-
-        self.contract = w3.eth.contract(
-            address=CREATOR,
-            abi=CREATOR_ABI
-        )
-
+        self.last_block = w3.eth.block_number
         self.seen = set()
 
-    def get_first_funder(self, dev):
+        self.funder_cache = {}
+
+    def get_first_funder(self, addr):
+
+        if addr in self.funder_cache:
+            return self.funder_cache[addr]
+
+        params = {
+            "chainid": CHAIN_ID,
+            "module": "account",
+            "action": "txlist",
+            "address": addr,
+            "startblock": 0,
+            "endblock": 99999999,
+            "sort": "asc",
+            "offset": 20,
+            "apikey": BSCSCAN_KEY
+        }
 
         try:
 
-            url = "https://api.bscscan.com/api"
+            r = requests.get(
+                ETHERSCAN,
+                params=params,
+                timeout=10
+            ).json()
 
-            params = {
-                "module": "account",
-                "action": "txlist",
-                "address": dev,
-                "startblock": 0,
-                "endblock": 99999999,
-                "sort": "asc",
-                "offset": 5,
-                "apikey": BSCSCAN_KEY
-            }
+            if r["status"] != "1":
+                return None
 
-            r = requests.get(url, params=params, timeout=10).json()
+            txs = r["result"]
 
-            txs = r.get("result", [])
-
-            if not txs:
-                return "unknown"
-
-            # 找第一笔转入 dev 的交易
             for tx in txs:
 
-                to_addr = tx.get("to")
+                if tx["to"] and tx["to"].lower() == addr.lower():
 
-                if to_addr and to_addr.lower() == dev.lower():
-                    return tx["from"]
+                    funder = tx["from"].lower()
 
-            return txs[0]["from"]
+                    self.funder_cache[addr] = funder
 
-        except Exception as e:
+                    return funder
 
-            print("查funder失败:", e)
-
-            return "unknown"
-
-    def process(self, dev, token):
-
-        if token in self.seen:
-            return
-
-        self.seen.add(token)
-
-        print("处理token:", token)
-
-        try:
-            name = get_token_name(self.w3, token)
         except:
-            name = "unknown"
+            pass
 
-        try:
-            bnb = get_bnb_balance(self.w3, dev)
-        except:
-            bnb = 0
+        return None
 
-        funder = self.get_first_funder(dev)
+    def trace_funding(self, dev):
 
-        msg = f"""
-🚀 发现新币
+        path = []
 
-Token
-{name}
+        current = dev.lower()
 
-Token地址
-{token}
+        for _ in range(3):
 
-Dev
-{dev}
+            funder = self.get_first_funder(current)
 
-Dev BNB
-{bnb:.3f}
+            if not funder:
+                break
 
-第一笔资金
-{funder}
+            if funder in CEX:
+                path.append(CEX[funder])
+                break
 
-https://bscscan.com/token/{token}
-"""
+            path.append(funder[:6])
 
-        print("发送TG")
+            current = funder
 
-        send(msg)
+        return " -> ".join(path)
+def trace_cex_path(self, dev):
 
-    def run(self):
+    path = []
+    current = dev.lower()
 
-        event_filter = self.contract.events.TokenCreated.create_filter(
-            fromBlock="latest"
-        )
+    for depth in range(4):
 
-        print("监听创币器...")
+        funder = self.get_first_funder(current)
 
-        send("🔍 创币器监听已启动")
+        if not funder:
+            break
+
+        funder = funder.lower()
+
+        # 如果是交易所
+        if funder in CEX:
+
+            path.append(CEX[funder])
+
+            return path
+
+        path.append(funder)
+
+        current = funder
+
+    return path
+    def format_path(self, path):
+
+    out = []
+
+    for p in path:
+
+        if p in CEX.values():
+            out.append(p)
+
+        else:
+            out.append(p[:6])
+
+    return " -> ".join(out)
+    path = self.trace_cex_path(dev)
+
+path_text = self.format_path(path)
+    def scan(self):
 
         while True:
 
             try:
 
-                events = event_filter.get_new_entries()
+                latest = w3.eth.block_number
 
-                for e in events:
+                if latest <= self.last_block:
+                    time.sleep(2)
+                    continue
 
-                    dev = e["args"]["owner"]
-                    token = e["args"]["token"]
+                logs = w3.eth.get_logs({
 
-                    print("新token:", token)
+                    "fromBlock": self.last_block + 1,
+                    "toBlock": latest,
+                    "address": CREATOR
 
-                    self.process(dev, token)
+                })
+
+                for log in logs:
+
+                    token = log["address"]
+
+                    if token in self.seen:
+                        continue
+
+                    self.seen.add(token)
+
+                    dev = Web3.to_checksum_address(
+                        log["topics"][1][-20:].hex()
+                    )
+
+                    name = get_token_name(token)
+
+                    funder = self.get_first_funder(dev)
+
+                    path = self.trace_funding(dev)
+
+                    bnb = get_bnb_balance(dev)
+
+                    msg = f"""
+🚀 New Token
+
+Name: {name}
+
+Token:
+{token}
+
+Dev:
+{dev}
+
+BNB:
+{bnb:.3f}
+
+Funding Path:
+{path}
+"""
+
+                    send(msg)
+
+                    print(msg)
+
+                self.last_block = latest
 
             except Exception as e:
 
-                print("监听错误:", e)
+                print("scan error:", e)
 
-                send(f"⚠️ 监听错误\n{e}")
+            time.sleep(2)
 
-                time.sleep(5)
 
-            time.sleep(3)
+if __name__ == "__main__":
+
+    scanner = Scanner()
+
+    print("scanner started")
+
+    scanner.scan()
