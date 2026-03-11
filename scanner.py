@@ -4,12 +4,25 @@ from web3 import Web3
 from utils import get_token_name, get_bnb_balance
 from tg import send
 
+# Telegram MarkdownV2 专用转义函数（核心修复！防止币名带 _ * . ! 等字符导致发送失败）
+def escape_md2(text):
+    """Telegram MarkdownV2 专用转义函数"""
+    if not text:
+        return ""
+    text = str(text)
+    chars = r'_*[]()~`>#+-=|{}.!'
+    for char in chars:
+        text = text.replace(char, '\\' + char)
+    return text
+
+
 RPC = os.getenv("RPC")
 w3 = Web3(Web3.HTTPProvider(RPC))
 
 CREATOR = Web3.to_checksum_address(
     "0x8480d0795615b535fb17392c24b42ea283b6f863"
 )
+
 
 class Scanner:
 
@@ -57,16 +70,20 @@ class Scanner:
                     name = get_token_name(w3, token)
                     bnb = get_bnb_balance(w3, dev)
 
+                    # ←←← 关键修复：转义处理（名称和小数点必须转义）
+                    name_esc = escape_md2(name)
+                    bnb_esc = escape_md2(f"{bnb:.4f}")
+
                     msg = f"""
 🚀 **新币上线**
 
-**名称**: {name}
+**名称**: {name_esc}
 **Token**: `{token}`
 **Dev**: `{dev}`
-**Dev BNB**: {bnb:.4f} BNB
+**Dev BNB**: {bnb_esc} BNB
 """
 
-                    send(msg)
+                    send(msg)   # 默认使用 MarkdownV2，已在 tg.py 中配置好
 
                 self.last_block = latest
 
