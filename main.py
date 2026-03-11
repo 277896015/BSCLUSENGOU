@@ -1,6 +1,7 @@
 import os
 from web3 import Web3
 from scanner import Scanner
+from tg import send
 
 RPC = os.getenv("RPC")
 
@@ -11,6 +12,7 @@ if not RPC:
 w3 = Web3(Web3.HTTPProvider(RPC))
 print("✅ RPC连接成功" if w3.is_connected() else "❌ RPC连接失败")
 send("创币器监控启动成功")
+
 if __name__ == "__main__":
     scanner = Scanner()
     scanner.scan()
